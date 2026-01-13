@@ -9,37 +9,69 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # 1. 拉取代码并初始化子模块
-      - name: Checkout code with submodules
+      # 1. 拉取代码
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
-          submodules: 'recursive'
-          fetch-depth: 0  # 获取完整历史，有助于子模块初始化
+          submodules: true
+          fetch-depth: 0
 
-      # 2. 更彻底地初始化子模块（包括嵌套子模块）
-      - name: Setup Submodules
+      # 2. 深度初始化子模块
+      - name: Deep Setup Submodules
         run: |
-          echo "开始初始化子模块..."
+          echo "=== 开始深度初始化子模块 ==="
+          
+          # 显示当前子模块配置
+          echo "子模块配置:"
+          cat .gitmodules || echo "没有.gitmodules文件"
+          
+          # 先同步所有子模块
+          echo "同步子模块..."
           git submodule sync --recursive
+          
+          # 初始化所有子模块
+          echo "初始化子模块..."
           git submodule update --init --recursive --force --depth=1
           
-          echo "检查 android-components 子模块..."
+          # 检查android-components是否存在
+          echo "检查android-components目录..."
           if [ -d "android-components" ]; then
-            echo "进入 android-components 目录..."
+            echo "android-components目录存在"
+            echo "进入android-components目录..."
             cd android-components
-            echo "当前目录: $(pwd)"
-            echo "初始化 android-components 的内部子模块..."
-            git submodule sync --recursive
-            git submodule update --init --recursive --force --depth=1
-            echo "android-components 子模块状态:"
-            git submodule status
+            
+            echo "android-components的git状态:"
+            git status
+            git log --oneline -5
+            
+            echo "android-components的子模块配置:"
+            if [ -f ".gitmodules" ]; then
+              cat .gitmodules
+            else
+              echo "没有.gitmodules文件"
+            fi
+            
+            echo "检查plugins目录..."
+            ls -la plugins/ || echo "plugins目录不存在"
+            
+            # 特别处理publicsuffixlist
+            if [ ! -d "plugins/publicsuffixlist" ]; then
+              echo "publicsuffixlist目录不存在，尝试单独初始化..."
+              git submodule update --init --recursive --force plugins/publicsuffixlist
+            fi
+            
             cd ..
           else
-            echo "错误: android-components 目录不存在!"
+            echo "错误: android-components目录不存在!"
+            # 尝试重新初始化
+            git submodule update --init --recursive --force
           fi
           
-          echo "所有子模块状态:"
-          git submodule status --recursive
+          # 最终检查
+          echo "=== 最终目录结构检查 ==="
+          find . -name "*.gradle" -o -name "*.gradle.kts" | head -20
+          echo "---"
+          ls -la android-components/plugins/ || echo "无法列出plugins目录"
 
       # 3. 设置Java环境
       - name: Set up JDK
@@ -52,21 +84,33 @@ jobs:
       - name: Decode Keystore File
         run: |
           echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > my-release-key.jks
+          echo "密钥库文件大小: $(wc -c < my-release-key.jks) bytes"
 
-      # 5. 给Gradle包装脚本执行权限
+      # 5. 先尝试执行gradle任务但不构建
+      - name: Check Gradle Configuration
+        run: |
+          chmod +x ./gradlew
+          echo "=== 测试gradle配置 ==="
+          ./gradlew tasks --all || true
+          echo "=== 检查settings.gradle ==="
+          head -50 settings.gradle || true
+
+      # 6. 给Gradle包装脚本执行权限
       - name: Grant execute permission to gradlew
         run: chmod +x ./gradlew
 
-      # 6. 构建并签名Release版APK
+      # 7. 构建并签名Release版APK
       - name: Build Signed APK
         run: |
+          echo "=== 开始构建 ==="
           ./gradlew assembleForkRelease \
             -PKEYSTORE_FILE=my-release-key.jks \
             -PKEYSTORE_PASSWORD='${{ secrets.KEYSTORE_PASSWORD }}' \
             -PKEY_ALIAS='${{ secrets.KEY_ALIAS }}' \
-            -PKEY_PASSWORD='${{ secrets.KEY_PASSWORD }}'
+            -PKEY_PASSWORD='${{ secrets.KEY_PASSWORD }}' \
+            --stacktrace
 
-      # 7. 上传生成的APK
+      # 8. 上传生成的APK
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
