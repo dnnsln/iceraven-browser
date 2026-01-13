@@ -1,4 +1,4 @@
-name: Build Signed APK
+name: Build Basic Signed APK
 
 on:
   workflow_dispatch:
@@ -7,18 +7,151 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # 1. 检查代码
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      # 2. 验证 settings.gradle 文件
-      - name: Verify settings.gradle
+      # 1. 创建最简单的 Android 项目
+      - name: Create Simple Project
         run: |
-          echo "检查 settings.gradle 文件..."
-          head -40 settings.gradle
-          echo ""
-          echo "检查第31行:"
-          sed -n '31p' settings.gradle
+          # 创建目录结构
+          mkdir -p app/src/main/java/com/example/myapp
+          mkdir -p app/src/main/res/layout
+          mkdir -p app/src/main/res/values
+          
+          # 创建 AndroidManifest.xml
+          cat > app/src/main/AndroidManifest.xml << 'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.myapp">
+    
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="My App"
+        android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+EOF
+          
+          # 创建 MainActivity.java
+          cat > app/src/main/java/com/example/myapp/MainActivity.java << 'EOF'
+package com.example.myapp;
+
+import android.os.Bundle;
+import androidx.appcompat.app.AppCompatActivity;
+
+public class MainActivity extends AppCompatActivity {
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+    }
+}
+EOF
+          
+          # 创建布局文件
+          cat > app/src/main/res/layout/activity_main.xml << 'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center">
+    
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Hello, Ice Raven!"
+        android:textSize="24sp" />
+        
+</LinearLayout>
+EOF
+          
+          # 创建 strings.xml
+          cat > app/src/main/res/values/strings.xml << 'EOF'
+<resources>
+    <string name="app_name">My App</string>
+</resources>
+EOF
+          
+          # 创建 build.gradle
+          cat > app/build.gradle << 'EOF'
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    compileSdk 33
+    namespace 'com.example.myapp'
+    
+    defaultConfig {
+        applicationId "com.example.myapp"
+        minSdk 21
+        targetSdk 33
+        versionCode 1
+        versionName "1.0"
+    }
+    
+    signingConfigs {
+        release {
+            storeFile file('my-release-key.jks')
+            storePassword System.getenv('STORE_PASSWORD')
+            keyAlias System.getenv('KEY_ALIAS')
+            keyPassword System.getenv('KEY_PASSWORD')
+        }
+    }
+    
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.9.0'
+}
+EOF
+          
+          # 创建 settings.gradle
+          cat > settings.gradle << 'EOF'
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = "MyApp"
+include ':app'
+EOF
+          
+          # 创建 gradle.properties
+          cat > gradle.properties << 'EOF'
+org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+android.useAndroidX=true
+android.enableJetifier=true
+EOF
+
+      # 2. 解码密钥库
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > my-release-key.jks
+          mv my-release-key.jks app/
 
       # 3. 设置Java环境
       - name: Set up JDK
@@ -27,33 +160,22 @@ jobs:
           java-version: '11'
           distribution: 'temurin'
 
-      # 4. 解码密钥库
-      - name: Decode Keystore File
+      # 4. 设置 Gradle 环境变量
+      - name: Setup Gradle
         run: |
-          echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > my-release-key.jks
+          echo "STORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
+          echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
+          echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
 
-      # 5. 给 gradlew 权限
-      - name: Grant execute permission to gradlew
-        run: chmod +x ./gradlew
-
-      # 6. 尝试构建 debug 版本
-      - name: Try Debug Build
+      # 5. 构建 APK
+      - name: Build APK
         run: |
-          ./gradlew assembleDebug --stacktrace
+          chmod +x ./gradlew || true
+          ./gradlew assembleRelease --stacktrace
 
-      # 7. 构建签名版本
-      - name: Build Signed Release
-        run: |
-          ./gradlew assembleForkRelease \
-            -PKEYSTORE_FILE=my-release-key.jks \
-            -PKEYSTORE_PASSWORD='${{ secrets.KEYSTORE_PASSWORD }}' \
-            -PKEY_ALIAS='${{ secrets.KEY_ALIAS }}' \
-            -PKEY_PASSWORD='${{ secrets.KEY_PASSWORD }}' \
-            --stacktrace
-
-      # 8. 上传 APK
+      # 6. 上传 APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Signed-APK
-          path: app/build/outputs/apk/fork/release/
+          name: Basic-Signed-APK
+          path: app/build/outputs/apk/release/app-release.apk
