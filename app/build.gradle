@@ -62,12 +62,35 @@ def getBuildId() {
 }
 
 android {
+    // 可能已有的其他配置...
     project.maybeConfigForJetpackBenchmark(it)
+
     if (project.hasProperty("testBuildType")) {
-        // Allowing to configure the test build type via command line flag (./gradlew -PtestBuildType=beta ..)
-        // in order to run UI tests against other build variants than debug in automation.
+        // ... 这是原有的测试配置，保持不动
         testBuildType project.property("testBuildType")
+    } // 注意：这里if语句结束了
+
+    // ============ 1. 签名配置块：放在这里，与 buildTypes 平级 ============
+    signingConfigs {
+        release {
+            // 关键：使用 findProperty 或 System.getenv 安全地获取值，并提供本地调试回退方案
+            storeFile file(findProperty("KEYSTORE_FILE") ?: "debug.keystore")
+            storePassword findProperty("KEYSTORE_PASSWORD") ?: ""
+            keyAlias findProperty("KEY_ALIAS") ?: ""
+            keyPassword findProperty("KEY_PASSWORD") ?: ""
+        }
     }
+
+    // ============ 2. 构建类型配置 ============
+    buildTypes {
+        release {
+            // 应用上面定义的 release 签名配置
+            signingConfig signingConfigs.release
+            // ... 其他 release 配置（如 minifyEnabled、proguardFiles）
+        }
+        // ... 其他构建类型（如 debug）
+    }
+}
 
     defaultConfig {
         applicationId "io.github.forkmaintainers"
