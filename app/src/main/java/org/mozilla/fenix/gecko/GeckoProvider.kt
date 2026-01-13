@@ -60,6 +60,25 @@ object GeckoProvider {
 
         val geckoRuntime = GeckoRuntime.create(context, runtimeSettings)
 
+        // ============ 设置 SOCKS5 代理 ============
+        try {
+            // 设置 SOCKS5 代理
+            geckoRuntime.settings.apply {
+                setString("network.proxy.socks", "127.0.0.1")
+                setInt("network.proxy.socks_port", 1080)
+                setInt("network.proxy.type", 1)  // 1=手动代理配置
+                setString("network.proxy.http", "")
+                setInt("network.proxy.http_port", 0)
+                setString("network.proxy.ssl", "")
+                setInt("network.proxy.ssl_port", 0)
+                setInt("network.proxy.socks_version", 5)
+                setBool("network.proxy.socks_remote_dns", true)
+                setString("network.proxy.no_proxies_on", "localhost, 127.0.0.1, ::1")
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
         geckoRuntime.autocompleteStorageDelegate = GeckoAutocompleteStorageDelegate(
             GeckoCreditCardsAddressesStorageDelegate(
                 storage = autofillStorage,
@@ -118,7 +137,7 @@ object GeckoProvider {
             )
             .consoleOutput(context.components.settings.enableGeckoLogs)
             .debugLogging(Config.channel.isDebug || context.components.settings.enableGeckoLogs)
-            .aboutConfigEnabled(true)
+            .aboutConfigEnabled(true)  // 重要：启用 about:config 访问
             .extensionsProcessEnabled(true)
             .extensionsWebAPIEnabled(true)
             .translationsOfferPopup(context.settings().offerTranslation)
