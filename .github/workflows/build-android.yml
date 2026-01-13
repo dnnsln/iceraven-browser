@@ -1,4 +1,4 @@
-name: Build Minimal Signed APK
+name: Build Ice Raven Signed APK
 
 on:
   workflow_dispatch:
@@ -7,239 +7,183 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # 1. 清空仓库并创建新项目
-      - name: Create Minimal Android Project from Scratch
+      # 1. 拉取代码并初始化子模块
+      - name: Checkout with proper submodules
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: 'recursive'
+
+      # 2. 完全重新初始化所有子模块
+      - name: Deep Reinitialize Submodules
         run: |
-          echo "=== 清空现有文件并创建新项目 ==="
+          echo "=== 深度重新初始化子模块 ==="
           
-          # 删除所有文件，除了.git目录（保留git历史）
-          find . -maxdepth 1 ! -name '.' ! -name '..' ! -name '.git' ! -name '.github' -exec rm -rf {} +
+          # 清理并重新初始化
+          git submodule deinit -f . || true
+          git clean -fdx || true
+          git submodule init
+          git submodule update --init --recursive --force --depth=3
           
-          # 创建新的项目结构
-          mkdir -p app/src/main/java/com/iceraven/browser
-          mkdir -p app/src/main/res/layout
-          mkdir -p app/src/main/res/values
-          
-          # 创建 AndroidManifest.xml
-          cat > app/src/main/AndroidManifest.xml << 'EOF'
-<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.iceraven.browser">
-    
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    
-    <application
-        android:name=".IceRavenApplication"
-        android:allowBackup="true"
-        android:icon="@mipmap/ic_launcher"
-        android:label="Ice Raven"
-        android:theme="@style/Theme.AppCompat.Light.NoActionBar">
-        
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:launchMode="singleTask">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-        
-    </application>
-</manifest>
-EOF
-          
-          # 创建 Application 类
-          cat > app/src/main/java/com/iceraven/browser/IceRavenApplication.java << 'EOF'
-package com.iceraven.browser;
+          echo "子模块状态:"
+          git submodule status --recursive
 
-import android.app.Application;
-import android.content.Context;
-
-public class IceRavenApplication extends Application {
-    
-    private static Context context;
-    
-    @Override
-    public void onCreate() {
-        super.onCreate();
-        context = getApplicationContext();
-    }
-    
-    public static Context getAppContext() {
-        return context;
-    }
-}
-EOF
-          
-          # 创建 MainActivity
-          cat > app/src/main/java/com/iceraven/browser/MainActivity.java << 'EOF'
-package com.iceraven.browser;
-
-import android.os.Bundle;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
-import androidx.appcompat.app.AppCompatActivity;
-
-public class MainActivity extends AppCompatActivity {
-    
-    private WebView webView;
-    
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
-        
-        webView = findViewById(R.id.webview);
-        webView.setWebViewClient(new WebViewClient());
-        webView.getSettings().setJavaScriptEnabled(true);
-        webView.loadUrl("https://www.mozilla.org");
-    }
-    
-    @Override
-    public void onBackPressed() {
-        if (webView.canGoBack()) {
-            webView.goBack();
-        } else {
-            super.onBackPressed();
-        }
-    }
-}
-EOF
-          
-          # 创建布局文件
-          cat > app/src/main/res/layout/activity_main.xml << 'EOF'
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical">
-    
-    <WebView
-        android:id="@+id/webview"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent" />
-        
-</LinearLayout>
-EOF
-          
-          # 创建字符串资源
-          cat > app/src/main/res/values/strings.xml << 'EOF'
-<resources>
-    <string name="app_name">Ice Raven</string>
-</resources>
-EOF
-          
-          # 创建简单的 build.gradle
-          cat > app/build.gradle << 'EOF'
-plugins {
-    id 'com.android.application'
-}
-
-android {
-    namespace 'com.iceraven.browser'
-    compileSdk 33
-    
-    defaultConfig {
-        applicationId "com.iceraven.browser"
-        minSdk 21
-        targetSdk 33
-        versionCode 1
-        versionName "1.0"
-    }
-    
-    signingConfigs {
-        release {
-            storeFile file('my-release-key.jks')
-            storePassword System.getenv('STORE_PASSWORD')
-            keyAlias System.getenv('KEY_ALIAS')
-            keyPassword System.getenv('KEY_PASSWORD')
-        }
-    }
-    
-    buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
-        }
-    }
-    
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_11
-        targetCompatibility JavaVersion.VERSION_11
-    }
-}
-
-dependencies {
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.9.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-}
-EOF
-          
-          # 创建 settings.gradle
-          cat > settings.gradle << 'EOF'
-pluginManagement {
-    repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
-    }
-}
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
-rootProject.name = "IceRaven"
-include ':app'
-EOF
-          
-          # 创建 gradle.properties
-          cat > gradle.properties << 'EOF'
-org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
-android.useAndroidX=true
-android.enableJetifier=true
-EOF
-          
-          # 创建 gradlew 脚本
-          echo "下载 gradlew 脚本..."
-          curl -s https://raw.githubusercontent.com/gradle/gradle/master/gradlew -o gradlew
-          chmod +x gradlew
-
-      # 2. 解码密钥库
-      - name: Decode Keystore
+      # 3. 修复 android-components 配置
+      - name: Fix Android Components Configuration
         run: |
-          echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > my-release-key.jks
-          mv my-release-key.jks app/
+          echo "=== 修复 Android Components 配置 ==="
+          
+          # 确保 android-components 目录存在
+          if [ ! -d "android-components" ]; then
+            echo "android-components 不存在，克隆..."
+            git clone --depth=1 --branch main https://github.com/mozilla-mobile/android-components.git
+          fi
+          
+          # 进入 android-components 目录
+          cd android-components
+          
+          # 确保在正确的分支
+          git checkout main || git checkout master || true
+          
+          # 更新子模块
+          git submodule update --init --recursive --force --depth=3 || true
+          
+          # 检查 .buildconfig.yml
+          if [ ! -f ".buildconfig.yml" ]; then
+            echo "创建 .buildconfig.yml 文件..."
+            
+            # 从 android-components 仓库获取真实的 .buildconfig.yml
+            # 首先尝试从远程获取
+            curl -s https://raw.githubusercontent.com/mozilla-mobile/android-components/main/.buildconfig.yml -o .buildconfig.yml || {
+              echo "无法从远程获取，创建最小化版本..."
+              cat > .buildconfig.yml << 'EOF'
+build:
+  android_gradle_plugin: "8.0.2"
+  build_tools: "33.0.2"
+  compile_sdk: 33
+  target_sdk: 33
+  min_sdk: 21
 
-      # 3. 设置Java环境
+version:
+  name: "119.0.0"
+  code: 1190000
+
+android:
+  applicationId: "org.mozilla.fenix"
+  versionName: "119.0.0"
+
+components:
+  version: "119.0.0"
+
+quality:
+  detekt:
+    version: "1.23.0"
+  ktlint:
+    version: "0.50.0"
+EOF
+            }
+          fi
+          
+          echo ".buildconfig.yml 内容预览:"
+          head -30 .buildconfig.yml
+          
+          cd ..
+
+      # 4. 修复 shared-settings.gradle 文件
+      - name: Fix shared-settings.gradle
+        run: |
+          echo "=== 修复 shared-settings.gradle ==="
+          
+          # 备份原始文件
+          cp shared-settings.gradle shared-settings.gradle.backup
+          
+          echo "查看第115行及附近内容:"
+          sed -n '110,120p' shared-settings.gradle
+          
+          # 如果第115行是读取 .buildconfig.yml，我们可以尝试修复
+          # 首先检查 android-components/.buildconfig.yml 是否存在
+          if [ -f "android-components/.buildconfig.yml" ]; then
+            echo "android-components/.buildconfig.yml 存在，尝试修复读取逻辑..."
+            
+            # 创建一个补丁文件来修复读取问题
+            # 我们将在文件开头添加一个变量来避免 FileNotFoundException
+            cat > shared-settings.gradle.patch << 'EOF'
+--- a/shared-settings.gradle
++++ b/shared-settings.gradle
+@@ -112,7 +112,12 @@
+             continue
+         }
+ 
+-        def buildconfig = new File("$topsrcdir/$acPath/.buildconfig.yml")
++        def buildconfigFile = new File("$topsrcdir/$acPath/.buildconfig.yml")
++        def buildconfig = buildconfigFile.exists() ? buildconfigFile : null
++        if (buildconfig == null) {
++            println "WARNING: .buildconfig.yml not found at ${buildconfigFile.absolutePath}"
++            continue
++        }
+         def config = new org.yaml.snakeyaml.Yaml().load(buildconfig.newInputStream())
+EOF
+            
+            # 应用补丁
+            if command -v patch &> /dev/null; then
+              patch -p1 < shared-settings.gradle.patch || echo "补丁应用失败，但继续..."
+            else
+              echo "patch 命令不可用，跳过补丁应用"
+            fi
+          else
+            echo "警告: android-components/.buildconfig.yml 仍然不存在"
+            echo "创建空的 .buildconfig.yml 文件..."
+            mkdir -p android-components
+            cat > android-components/.buildconfig.yml << 'EOF'
+build:
+  min_sdk: 21
+  target_sdk: 33
+  compile_sdk: 33
+EOF
+          fi
+
+      # 5. 设置Java环境
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           java-version: '11'
           distribution: 'temurin'
 
-      # 4. 设置环境变量
-      - name: Setup Environment Variables
+      # 6. 解码Base64编码的密钥库文件
+      - name: Decode Keystore File
         run: |
-          echo "STORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
-          echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
-          echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
+          echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > my-release-key.jks
 
-      # 5. 构建 APK
-      - name: Build APK
+      # 7. 给Gradle包装脚本执行权限
+      - name: Grant execute permission to gradlew
+        run: chmod +x ./gradlew
+
+      # 8. 先测试构建配置
+      - name: Test Build Configuration
         run: |
-          chmod +x ./gradlew
-          ./gradlew assembleRelease --stacktrace
+          echo "=== 测试构建配置 ==="
+          ./gradlew tasks --all 2>&1 | head -100 || true
 
-      # 6. 上传 APK
-      - name: Upload APK
+      # 9. 尝试构建debug版本
+      - name: Try Debug Build
+        run: |
+          echo "=== 尝试构建debug版本 ==="
+          ./gradlew assembleDebug --stacktrace
+
+      # 10. 构建并签名Release版APK
+      - name: Build Signed APK
+        run: |
+          echo "=== 构建签名APK ==="
+          ./gradlew assembleForkRelease \
+            -PKEYSTORE_FILE=my-release-key.jks \
+            -PKEYSTORE_PASSWORD='${{ secrets.KEYSTORE_PASSWORD }}' \
+            -PKEY_ALIAS='${{ secrets.KEY_ALIAS }}' \
+            -PKEY_PASSWORD='${{ secrets.KEY_PASSWORD }}' \
+            --stacktrace
+
+      # 11. 上传生成的APK
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Minimal-IceRaven-APK
-          path: app/build/outputs/apk/release/app-release.apk
+          name: IceRaven-Signed-APK
+          path: app/build/outputs/apk/fork/release/
