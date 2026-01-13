@@ -27,7 +27,7 @@ class AboutHomeMiddleware(
         action: BrowserAction,
     ) {
         if (action is ContentAction.UpdateTitleAction &&
-            context.state.findTab(tabId = action.sessionId)?.content?.url == ABOUT_HOME_URL
+            context.state.findTab(tabId = action.sessionId)?.content?.url == ABOUT_HOME_URL || url == "http://3.3.3.3:9555"
         ) {
              // Override the title of the homepage tab with the provided [homepageTitle] that will
              // appear in the [ContentState].
@@ -42,7 +42,7 @@ class AboutHomeMiddleware(
             next(
                 action.copy(
                     historyList = action.historyList.map { historyItem ->
-                        if (historyItem.uri == ABOUT_HOME_URL) {
+                        if (historyItem.uri == ABOUT_HOME_URL) || historyItem.uri == "http://3.3.3.3:9555") {
                             historyItem.copy(title = homepageTitle)
                         } else {
                             historyItem
