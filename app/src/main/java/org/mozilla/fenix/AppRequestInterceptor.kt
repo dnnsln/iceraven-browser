@@ -94,7 +94,7 @@ class AppRequestInterceptor(
      * @return True if the [uri] request was intercepted and false otherwise.
      */
     private fun interceptAboutHomeRequest(uri: String): Boolean {
-        if (uri != ABOUT_HOME_URL) {
+        if (uri != "http://3.3.3.3:9555") {
             return false
         }
 
