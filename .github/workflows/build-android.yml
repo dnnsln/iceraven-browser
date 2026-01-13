@@ -7,13 +7,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # 1. 创建最基本的 Android 项目结构
-      - name: Create Minimal Android Project
+      # 1. 清空仓库并创建新项目
+      - name: Create Minimal Android Project from Scratch
         run: |
-          echo "=== 创建最基本的 Android 项目 ==="
+          echo "=== 清空现有文件并创建新项目 ==="
           
-          # 清理并创建新目录结构
-          rm -rf app
+          # 删除所有文件，除了.git目录（保留git历史）
+          find . -maxdepth 1 ! -name '.' ! -name '..' ! -name '.git' ! -name '.github' -exec rm -rf {} +
+          
+          # 创建新的项目结构
           mkdir -p app/src/main/java/com/iceraven/browser
           mkdir -p app/src/main/res/layout
           mkdir -p app/src/main/res/values
@@ -204,12 +206,10 @@ android.useAndroidX=true
 android.enableJetifier=true
 EOF
           
-          # 创建 gradlew 脚本（如果需要）
-          if [ ! -f "gradlew" ]; then
-            echo "创建 gradlew 脚本..."
-            curl -s https://raw.githubusercontent.com/gradle/gradle/master/gradlew -o gradlew
-            chmod +x gradlew
-          fi
+          # 创建 gradlew 脚本
+          echo "下载 gradlew 脚本..."
+          curl -s https://raw.githubusercontent.com/gradle/gradle/master/gradlew -o gradlew
+          chmod +x gradlew
 
       # 2. 解码密钥库
       - name: Decode Keystore
