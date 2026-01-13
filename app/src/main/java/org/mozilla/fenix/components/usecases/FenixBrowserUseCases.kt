@@ -34,7 +34,6 @@ class FenixBrowserUseCases(
     private val searchUseCases: SearchUseCases,
     private val homepageTitle: String,
     private val profiler: Profiler?,
-    private val MY_HOMEPAGE_URL = "http://3.3.3.3:9555"
 ) {
     /**
      * Loads a URL or performs a search depending on the value of [searchTermOrURL].
@@ -49,6 +48,7 @@ class FenixBrowserUseCases(
      * was opened from history.
      * @param additionalHeaders The extra headers to use when loading the URL.
      */
+    private val MY_HOMEPAGE_URL = "http://3.3.3.3:9555"
     fun loadUrlOrSearch(
         searchTermOrURL: String,
         newTab: Boolean,
