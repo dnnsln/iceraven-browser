@@ -40,7 +40,7 @@ class HomepageThumbnailIntegration(
         HomepageThumbnails(
             context = context,
             store = store,
-            homepageUrl = ABOUT_HOME_URL,
+            homepageUrl = "http://3.3.3.3:9555",
             homepageRequest = ::homepageRequest,
         )
     }
