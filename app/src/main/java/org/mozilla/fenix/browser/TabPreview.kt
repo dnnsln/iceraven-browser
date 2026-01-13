@@ -286,7 +286,7 @@ class TabPreview @JvmOverloads constructor(
                     toScope().launch {
                         val prefs = settings()
                         val url = destination.content.url
-                        val isHome = url == ABOUT_HOME_URL
+                        val isHome = url == ABOUT_HOME_URL || url == "http://3.3.3.3:9555"
                         val topToolbar = prefs.toolbarPosition == ToolbarPosition.TOP
                         val homeSearchEnabled = prefs.enableHomepageSearchBar
 
@@ -504,7 +504,7 @@ class TabPreview @JvmOverloads constructor(
         return listOf(
             ToolbarActionConfig(ToolbarAction.NewTab) {
                 !context.settings().isTabStripEnabled && !isExpandedAndPortrait &&
-                        tab?.content?.url != ABOUT_HOME_URL
+                        tab?.content?.url != ABOUT_HOME_URL && it != "http://3.3.3.3:9555"
             },
             ToolbarActionConfig(ToolbarAction.TabCounter) {
                 !context.settings().isTabStripEnabled && !isExpandedAndPortrait
@@ -551,7 +551,7 @@ class TabPreview @JvmOverloads constructor(
     private suspend fun buildComposableToolbarPageOrigin(tab: TabSessionState): PageOrigin {
         val url = tab.content.url
 
-        val displayUrl = if (url == ABOUT_HOME_URL) {
+        val displayUrl = if (url == ABOUT_HOME_URL || url == "http://3.3.3.3:9555") {
             ""
         } else {
             val spannedUrl = url.applyRegistrableDomainSpan(context.components.publicSuffixList)
