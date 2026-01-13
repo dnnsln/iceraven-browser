@@ -15,165 +15,120 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 2. 深度诊断和初始化
-      - name: Deep Diagnostic and Setup
+      # 2. 获取关键诊断信息
+      - name: Critical Diagnostic
         run: |
-          echo "=== 深度诊断开始 ==="
+          echo "=== 关键诊断信息 ==="
+          echo "1. 查看 settings.gradle 第31行及周围内容:"
+          sed -n '25,40p' settings.gradle
           
-          # 1. 显示项目结构
-          echo "当前目录: $(pwd)"
-          echo "目录结构:"
+          echo ""
+          echo "2. 查看整个 settings.gradle 文件:"
+          cat settings.gradle
+          
+          echo ""
+          echo "3. 查看 .gitmodules 文件:"
+          cat .gitmodules || echo "没有 .gitmodules 文件"
+          
+          echo ""
+          echo "4. 当前目录结构:"
           find . -maxdepth 3 -type d | sort
           
-          # 2. 检查 .gitmodules
-          echo "=== 检查 .gitmodules ==="
-          if [ -f ".gitmodules" ]; then
-            echo "找到 .gitmodules 文件:"
-            cat .gitmodules
-          else
-            echo "未找到 .gitmodules 文件"
+          echo ""
+          echo "5. 检查 android-components 是否存在:"
+          ls -la android-components/ || echo "android-components 目录不存在"
+
+      # 3. 手动设置复合构建
+      - name: Setup Composite Build Manually
+        run: |
+          echo "=== 手动设置复合构建 ==="
+          
+          # 1. 删除现有的 android-components
+          rm -rf android-components
+          
+          # 2. 克隆 android-components
+          echo "克隆 android-components..."
+          git clone --depth=1 https://github.com/mozilla-mobile/android-components.git
+          
+          # 3. 进入 android-components
+          cd android-components
+          
+          # 4. 克隆 publicsuffixlist（作为独立的Gradle项目）
+          echo "设置 publicsuffixlist..."
+          if [ ! -d "plugins" ]; then
+            mkdir -p plugins
           fi
           
-          # 3. 检查 settings.gradle
-          echo "=== 检查 settings.gradle ==="
-          if [ -f "settings.gradle" ]; then
-            echo "settings.gradle 内容:"
-            cat settings.gradle
-          else
-            echo "未找到 settings.gradle 文件"
-          fi
+          cd plugins
+          echo "克隆 publicsuffixlist 仓库..."
+          git clone --depth=1 https://github.com/mozilla-mobile/publicsuffixlist.git
           
-          # 4. 检查 android-components 目录
-          echo "=== 检查 android-components 目录 ==="
-          if [ -d "android-components" ]; then
-            echo "android-components 存在，内容:"
-            ls -la android-components/
-            
-            echo "检查 android-components 的 .gitmodules:"
-            if [ -f "android-components/.gitmodules" ]; then
-              cat android-components/.gitmodules
-            else
-              echo "android-components/.gitmodules 不存在"
-            fi
-          else
-            echo "android-components 目录不存在，将手动克隆"
-            
-            # 获取 android-components 的子模块URL
-            echo "从 .gitmodules 获取 android-components URL..."
-            if [ -f ".gitmodules" ]; then
-              ACOMP_URL=$(grep -A2 "path = android-components" .gitmodules | grep "url" | cut -d= -f2 | tr -d ' ')
-              echo "找到URL: $ACOMP_URL"
-              
-              if [ ! -z "$ACOMP_URL" ]; then
-                echo "克隆 android-components..."
-                git clone --depth=1 $ACOMP_URL android-components
-              else
-                echo "使用默认URL克隆 android-components..."
-                git clone --depth=1 https://github.com/mozilla-mobile/android-components.git
-              fi
-            else
-              echo "使用默认URL克隆 android-components..."
-              git clone --depth=1 https://github.com/mozilla-mobile/android-components.git
-            fi
+          # 5. 确保 publicsuffixlist 有必要的构建文件
+          cd publicsuffixlist
+          if [ ! -f "build.gradle" ] && [ ! -f "build.gradle.kts" ]; then
+            echo "警告: publicsuffixlist 没有构建文件，这可能是个问题"
+            echo "尝试查找构建文件..."
+            find . -name "*.gradle*" -type f
           fi
+          cd ../../..
           
-          # 5. 特别处理 public suffix list
-          echo "=== 特别处理 public suffix list ==="
-          if [ -d "android-components" ]; then
-            cd android-components
-            
-            # 检查 plugins 目录
-            echo "检查 plugins 目录..."
-            if [ ! -d "plugins" ]; then
-              mkdir -p plugins
-            fi
-            
-            # 检查 publicsuffixlist
-            if [ ! -d "plugins/publicsuffixlist" ]; then
-              echo "publicsuffixlist 不存在，尝试克隆..."
-              
-              # 从 android-components 的 .gitmodules 获取URL
-              if [ -f ".gitmodules" ]; then
-                PSL_URL=$(grep -A2 "path = plugins/publicsuffixlist" .gitmodules | grep "url" | cut -d= -f2 | tr -d ' ')
-                echo "从 .gitmodules 找到URL: $PSL_URL"
-                
-                if [ ! -z "$PSL_URL" ]; then
-                  cd plugins
-                  git clone --depth=1 $PSL_URL publicsuffixlist
-                  cd ..
-                else
-                  echo "尝试从常见位置克隆..."
-                  cd plugins
-                  git clone --depth=1 https://github.com/mozilla-mobile/publicsuffixlist.git publicsuffixlist
-                  cd ..
-                fi
-              else
-                echo "尝试从常见位置克隆..."
-                cd plugins
-                git clone --depth=1 https://github.com/mozilla-mobile/publicsuffixlist.git publicsuffixlist
-                cd ..
-              fi
-            else
-              echo "publicsuffixlist 已存在"
-            fi
-            
-            # 验证
-            echo "验证目录结构..."
-            if [ -d "plugins/publicsuffixlist" ]; then
-              echo "✓ publicsuffixlist 存在"
-              echo "内容:"
-              ls -la plugins/publicsuffixlist/
-            else
-              echo "✗ publicsuffixlist 仍然不存在"
-              
-              # 尝试替代路径
-              echo "尝试寻找替代位置..."
-              find . -name "*publicsuffixlist*" -type d
-            fi
-            
-            cd ..
-          fi
-          
-          # 6. 最终验证
-          echo "=== 最终验证 ==="
-          echo "检查 android-components/plugins/publicsuffixlist 是否存在:"
+          # 6. 验证
+          echo "验证设置:"
           if [ -d "android-components/plugins/publicsuffixlist" ]; then
-            echo "✓ 成功: android-components/plugins/publicsuffixlist 存在"
+            echo "✓ publicsuffixlist 目录存在"
+            echo "目录内容:"
+            ls -la android-components/plugins/publicsuffixlist/
           else
-            echo "✗ 失败: android-components/plugins/publicsuffixlist 不存在"
-            echo "尝试创建空目录以继续..."
-            mkdir -p android-components/plugins/publicsuffixlist
+            echo "✗ publicsuffixlist 目录不存在"
           fi
 
-      # 3. 设置Java环境
+      # 4. 备选方案：修改 settings.gradle
+      - name: Alternative Fix - Modify settings.gradle
+        run: |
+          echo "=== 备选方案：修改 settings.gradle ==="
+          
+          # 备份原文件
+          cp settings.gradle settings.gradle.backup
+          
+          echo "原始 settings.gradle 第31行内容:"
+          sed -n '31p' settings.gradle
+          
+          # 尝试注释掉有问题的行
+          echo "尝试注释掉第31行（如果包含publicsuffixlist）..."
+          sed -i '31s/^/# /' settings.gradle
+          
+          echo "修改后的 settings.gradle 第31行内容:"
+          sed -n '31p' settings.gradle
+          
+          echo "检查是否还有其他引用..."
+          grep -n "publicsuffixlist" settings.gradle || echo "没有其他引用"
+
+      # 5. 设置Java环境
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           java-version: '11'
           distribution: 'temurin'
 
-      # 4. 解码Base64编码的密钥库文件
+      # 6. 解码Base64编码的密钥库文件
       - name: Decode Keystore File
         run: |
           echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > my-release-key.jks
 
-      # 5. 给Gradle包装脚本执行权限
+      # 7. 给Gradle包装脚本执行权限
       - name: Grant execute permission to gradlew
         run: chmod +x ./gradlew
 
-      # 6. 先检查Gradle插件
-      - name: Check Gradle Plugins
+      # 8. 尝试构建（不签名，先测试）
+      - name: Test Build (unsigned)
         run: |
-          echo "=== 检查Gradle插件 ==="
-          ./gradlew --version
-          echo "---"
-          echo "尝试列出所有插件..."
-          ./gradlew tasks --all | grep -i plugin || true
+          echo "=== 测试构建（不签名）==="
+          ./gradlew assembleDebug --stacktrace || true
 
-      # 7. 构建并签名Release版APK
+      # 9. 构建并签名Release版APK
       - name: Build Signed APK
         run: |
-          echo "=== 开始构建 ==="
+          echo "=== 构建签名APK ==="
           ./gradlew assembleForkRelease \
             -PKEYSTORE_FILE=my-release-key.jks \
             -PKEYSTORE_PASSWORD='${{ secrets.KEYSTORE_PASSWORD }}' \
@@ -181,7 +136,7 @@ jobs:
             -PKEY_PASSWORD='${{ secrets.KEY_PASSWORD }}' \
             --stacktrace
 
-      # 8. 上传生成的APK
+      # 10. 上传生成的APK
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
