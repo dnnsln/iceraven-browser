@@ -9,42 +9,35 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # 1. 拉取你的代码
-      - name: Checkout code
+      # 1. 拉取代码并初始化子模块
+      - name: Checkout code with submodules
         uses: actions/checkout@v4
-        with: # 增加这个with配置，递归地拉取子模块
+        with:
           submodules: 'recursive'
 
-      # 【新增】2. 显式初始化并更新子模块（双重保险）
+      # 2. 显式初始化并更新子模块（双重保险）
       - name: Setup Submodules
         run: |
           git submodule sync
           git submodule update --init --recursive --force
 
-      # 3. 设置Java环境...
-    steps:
-      # 1. 更新到主版本 v4 (推荐且稳定)
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      # 2. 更新到主版本 v4
-      
+      # 3. 设置Java环境
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           java-version: '11'
           distribution: 'temurin'
 
-      # 3. 解码Base64编码的密钥库文件，还原为 .jks 文件
+      # 4. 解码Base64编码的密钥库文件
       - name: Decode Keystore File
         run: |
           echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > my-release-key.jks
 
-      # 4. 给Gradle包装脚本执行权限
+      # 5. 给Gradle包装脚本执行权限
       - name: Grant execute permission to gradlew
         run: chmod +x ./gradlew
 
-      # 5. 构建并签名Release版APK (使用了 forkRelease 变体，很好！)
+      # 6. 构建并签名Release版APK
       - name: Build Signed APK
         run: |
           ./gradlew assembleForkRelease \
@@ -53,10 +46,10 @@ jobs:
             -PKEY_ALIAS='${{ secrets.KEY_ALIAS }}' \
             -PKEY_PASSWORD='${{ secrets.KEY_PASSWORD }}'
 
-      # 6. 上传生成的APK (已更新为v4，关键：修正输出路径！)
+      # 7. 上传生成的APK
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Signed-Fork-Release-APK
-          # 路径应根据 fork 变体调整！如果此路径不存在，构建会成功但上传会报错。
+          # Ice Raven 的 APK 输出路径（根据项目结构可能需要调整）
           path: app/build/outputs/apk/fork/release/
