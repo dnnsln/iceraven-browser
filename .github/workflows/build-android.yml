@@ -8,13 +8,27 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    steps:
+      # 1. 拉取你的代码
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with: # 增加这个with配置，递归地拉取子模块
+          submodules: 'recursive'
 
+      # 【新增】2. 显式初始化并更新子模块（双重保险）
+      - name: Setup Submodules
+        run: |
+          git submodule sync
+          git submodule update --init --recursive --force
+
+      # 3. 设置Java环境...
     steps:
       # 1. 更新到主版本 v4 (推荐且稳定)
       - name: Checkout code
         uses: actions/checkout@v4
 
       # 2. 更新到主版本 v4
+      
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
