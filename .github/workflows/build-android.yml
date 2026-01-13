@@ -1,4 +1,4 @@
-name: Build Signed Release APK
+name: Build Signed APK
 
 on:
   workflow_dispatch:
@@ -7,150 +7,43 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # 1. 拉取代码
+      # 1. 检查代码
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      # 2. 显示当前 settings.gradle 内容
-      - name: Show Current settings.gradle
+      # 2. 验证 settings.gradle 文件
+      - name: Verify settings.gradle
         run: |
-          echo "=== 当前 settings.gradle 内容 ==="
-          cat settings.gradle
+          echo "检查 settings.gradle 文件..."
+          head -40 settings.gradle
           echo ""
-          echo "=== 第31行内容 ==="
+          echo "检查第31行:"
           sed -n '31p' settings.gradle
 
-      # 3. 完全重写 settings.gradle 文件
-      - name: Rewrite settings.gradle
-        run: |
-          echo "=== 重写 settings.gradle ==="
-          
-          # 备份原始文件
-          cp settings.gradle settings.gradle.backup
-          
-          # 创建全新的 settings.gradle，注释掉有问题的插件
-          cat > settings.gradle << 'EOF'
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-pluginManagement {
-    if (!gradle.root.hasProperty("mozconfig")){
-        apply from: file('./gradle/mozconfig.gradle')
-    } else {
-        gradle.ext.mozconfig = gradle.root.mozconfig
-    }
-
-    repositories {
-        gradle.mozconfig.substs.GRADLE_MAVEN_REPOSITORIES.each { repository ->
-            maven {
-                url = repository
-                if (gradle.mozconfig.substs.ALLOW_INSECURE_GRADLE_REPOSITORIES) {
-                    allowInsecureProtocol = true
-                }
-            }
-        }
-    }
-
-    // 注释掉有问题的插件构建
-    // includeBuild("./android-components/plugins/publicsuffixlist")
-    // includeBuild("./android-components/plugins/dependencies")
-    // includeBuild("./android-components/plugins/config")
-    includeBuild("./plugins/apksize")
-    includeBuild("./plugins/nimbus-gradle-plugin")
-}
-
-// 注释掉有问题的插件
-// plugins {
-//     id 'mozac.DependenciesPlugin'
-// }
-
-//dependencyResolutionManagement {
-//   versionCatalogs {
-//       libs {
-//           from(files("./gradle/libs.versions.toml"))
-//       }
-//   }
-//}
-
-ext.topsrcdir = rootProject.projectDir.absolutePath.minus("mobile/android/fenix")
-
-apply from: file('./shared-settings.gradle')
-// apply from: file('./autopublish-settings.gradle')
-
-include ':app'
-include ':mozilla-detekt-rules'
-include ':benchmark'
-
-gradle.projectsLoaded { ->
-    // Disables A-C tests and lint when building Fenix.
-    gradle.allprojects { project ->
-        if (project.projectDir.absolutePath.contains("/android-components/")) {
-            project.tasks.withType(Test).configureEach {
-                enabled = false
-            }
-            project.tasks.configureEach { task ->
-                if (task.name.contains("lint")) {
-                    task.enabled = false
-                }
-            }
-        }
-    }
-}
-
-def projectLocalProperties = file("local.properties").with { localPropertiesFile ->
-    def localProperties = new Properties()
-    if (localPropertiesFile.canRead()) {
-        localPropertiesFile.withInputStream { localProperties.load(it) }
-    }
-    localProperties
-}
-projectLocalProperties.each { prop ->
-    gradle.ext."localProperties.${prop.key}" = prop.value
-}
-EOF
-          
-          echo "=== 重写后的 settings.gradle 内容 ==="
-          cat settings.gradle
-
-      # 4. 验证修改是否成功
-      - name: Verify Changes
-        run: |
-          echo "=== 验证修改 ==="
-          echo "检查是否还有对 publicsuffixlist 的引用:"
-          grep -n "publicsuffixlist" settings.gradle || echo "没有找到 publicsuffixlist 引用 ✓"
-          echo ""
-          echo "检查是否还有对 DependenciesPlugin 的引用:"
-          grep -n "DependenciesPlugin" settings.gradle || echo "没有找到 DependenciesPlugin 引用 ✓"
-
-      # 5. 设置Java环境
+      # 3. 设置Java环境
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           java-version: '11'
           distribution: 'temurin'
 
-      # 6. 解码Base64编码的密钥库文件
+      # 4. 解码密钥库
       - name: Decode Keystore File
         run: |
           echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > my-release-key.jks
 
-      # 7. 给Gradle包装脚本执行权限
+      # 5. 给 gradlew 权限
       - name: Grant execute permission to gradlew
         run: chmod +x ./gradlew
 
-      # 8. 先测试构建debug版本
-      - name: Test Build Debug
+      # 6. 尝试构建 debug 版本
+      - name: Try Debug Build
         run: |
-          echo "=== 测试构建debug版本 ==="
           ./gradlew assembleDebug --stacktrace
 
-      # 9. 构建并签名Release版APK
-      - name: Build Signed APK
+      # 7. 构建签名版本
+      - name: Build Signed Release
         run: |
-          echo "=== 构建签名APK ==="
           ./gradlew assembleForkRelease \
             -PKEYSTORE_FILE=my-release-key.jks \
             -PKEYSTORE_PASSWORD='${{ secrets.KEYSTORE_PASSWORD }}' \
@@ -158,9 +51,9 @@ EOF
             -PKEY_PASSWORD='${{ secrets.KEY_PASSWORD }}' \
             --stacktrace
 
-      # 10. 上传生成的APK
-      - name: Upload APK Artifact
+      # 8. 上传 APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Signed-Fork-Release-APK
+          name: Signed-APK
           path: app/build/outputs/apk/fork/release/
