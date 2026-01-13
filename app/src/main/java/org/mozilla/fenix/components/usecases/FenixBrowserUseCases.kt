@@ -34,6 +34,7 @@ class FenixBrowserUseCases(
     private val searchUseCases: SearchUseCases,
     private val homepageTitle: String,
     private val profiler: Profiler?,
+    private val MY_HOMEPAGE_URL = "http://3.3.3.3:9555"
 ) {
     /**
      * Loads a URL or performs a search depending on the value of [searchTermOrURL].
@@ -124,7 +125,7 @@ class FenixBrowserUseCases(
      */
     fun addNewHomepageTab(private: Boolean = appStore.state.mode.isPrivate): String {
         return addNewTabUseCase.invoke(
-            url = ABOUT_HOME_URL,
+            url = MY_HOMEPAGE_URL,
             title = homepageTitle,
             private = private,
         )
@@ -134,6 +135,6 @@ class FenixBrowserUseCases(
      * Loads the homepage ("about:home").
      */
     fun navigateToHomepage() {
-        loadUrlUseCase.invoke(url = ABOUT_HOME_URL)
+        loadUrlUseCase.invoke(url = MY_HOMEPAGE_URL)
     }
 }
