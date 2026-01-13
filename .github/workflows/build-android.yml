@@ -9,85 +9,38 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # 1. 完全重新拉取代码（不使用子模块）
-      - name: Checkout code (without submodules)
+      # 1. 拉取代码
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 2. 完全重新初始化所有子模块
-      - name: Nuke and Reinitialize Submodules
+      # 2. 手动初始化子模块
+      - name: Manual Submodule Initialization
         run: |
-          echo "=== 彻底重新初始化子模块 ==="
+          echo "=== 手动初始化子模块 ==="
           
-          # 1. 先清理所有现有的子模块
-          echo "清理现有子模块..."
-          git submodule deinit -f . || true
-          git clean -fdx || true
+          # 1. 删除现有目录
+          rm -rf android-components
           
-          # 2. 重新初始化
-          echo "重新初始化子模块..."
-          git submodule init
+          # 2. 手动克隆主子模块
+          echo "克隆android-components..."
+          git clone --depth=1 --recursive https://github.com/mozilla-mobile/android-components.git
           
-          # 3. 递归更新（使用更大的深度）
-          echo "递归更新子模块..."
-          git submodule update --init --recursive --force --depth=3
-          
-          # 4. 特别处理android-components
-          echo "特别处理android-components..."
-          if [ -d "android-components" ]; then
-            cd android-components
-            echo "在android-components中初始化子模块..."
-            git submodule init
-            git submodule update --init --recursive --force --depth=3
-            
-            # 特别检查publicsuffixlist
-            echo "检查publicsuffixlist..."
-            if [ -d "plugins/publicsuffixlist" ]; then
-              echo "publicsuffixlist目录已存在"
-              cd plugins/publicsuffixlist
-              git status
-              cd ../..
-            else
-              echo "尝试单独初始化publicsuffixlist..."
-              git submodule update --init --force --depth=3 plugins/publicsuffixlist || true
-            fi
+          # 3. 进入并检查publicsuffixlist
+          cd android-components
+          echo "检查publicsuffixlist..."
+          if [ ! -d "plugins/publicsuffixlist" ]; then
+            echo "手动初始化publicsuffixlist..."
+            cd plugins
+            git clone --depth=1 https://github.com/mozilla-mobile/publicsuffixlist.git
             cd ..
           fi
+          cd ..
           
-          # 5. 验证
-          echo "=== 验证目录结构 ==="
-          echo "当前目录: $(pwd)"
-          ls -la
-          echo "---"
-          if [ -d "android-components" ]; then
-            echo "android-components目录内容:"
-            ls -la android-components/
-            echo "---"
-            if [ -d "android-components/plugins" ]; then
-              echo "android-components/plugins目录内容:"
-              ls -la android-components/plugins/
-              echo "---"
-              if [ -d "android-components/plugins/publicsuffixlist" ]; then
-                echo "publicsuffixlist目录存在!"
-                ls -la android-components/plugins/publicsuffixlist/
-              else
-                echo "警告: publicsuffixlist目录仍然不存在"
-                # 尝试从.gitmodules中获取URL并手动克隆
-                echo "尝试从.gitmodules提取URL..."
-                if [ -f "android-components/.gitmodules" ]; then
-                  URL=$(grep -A2 "publicsuffixlist" android-components/.gitmodules | grep "url" | cut -d= -f2 | tr -d ' ')
-                  echo "找到URL: $URL"
-                  if [ ! -z "$URL" ]; then
-                    echo "手动克隆publicsuffixlist..."
-                    cd android-components/plugins
-                    git clone --depth=1 $URL publicsuffixlist
-                    cd ../..
-                  fi
-                fi
-              fi
-            fi
-          fi
+          # 4. 验证
+          echo "验证目录结构..."
+          find . -name "*.gradle*" | head -10
 
       # 3. 设置Java环境
       - name: Set up JDK
@@ -96,28 +49,23 @@ jobs:
           java-version: '11'
           distribution: 'temurin'
 
-      # 4. 解码密钥库
+      # 4. 解码Base64编码的密钥库文件
       - name: Decode Keystore File
         run: |
           echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > my-release-key.jks
 
-      # 5. 测试性构建（先不签名）
-      - name: Test Build (unsigned)
-        run: |
-          chmod +x ./gradlew
-          echo "=== 测试构建（不签名）==="
-          ./gradlew assembleForkDebug --stacktrace || ./gradlew assembleDebug --stacktrace
+      # 5. 给Gradle包装脚本执行权限
+      - name: Grant execute permission to gradlew
+        run: chmod +x ./gradlew
 
       # 6. 构建并签名Release版APK
       - name: Build Signed APK
         run: |
-          echo "=== 构建签名APK ==="
           ./gradlew assembleForkRelease \
             -PKEYSTORE_FILE=my-release-key.jks \
             -PKEYSTORE_PASSWORD='${{ secrets.KEYSTORE_PASSWORD }}' \
             -PKEY_ALIAS='${{ secrets.KEY_ALIAS }}' \
-            -PKEY_PASSWORD='${{ secrets.KEY_PASSWORD }}' \
-            --stacktrace
+            -PKEY_PASSWORD='${{ secrets.KEY_PASSWORD }}'
 
       # 7. 上传生成的APK
       - name: Upload APK Artifact
