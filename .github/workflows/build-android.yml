@@ -15,157 +15,49 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 2. 详细诊断（必须看到这个输出！）
-      - name: Detailed Diagnostic (CRITICAL)
+      # 2. 显示关键信息
+      - name: Show Critical Info
         run: |
-          echo "==================== 详细诊断 ===================="
-          echo "1. 当前目录: $(pwd)"
-          echo ""
-          echo "2. settings.gradle 文件内容:"
-          cat settings.gradle
-          echo ""
-          echo "3. settings.gradle 第31行内容:"
+          echo "=== settings.gradle 第31行 ==="
           sed -n '31p' settings.gradle
           echo ""
-          echo "4. 第31行附近的上下文:"
-          sed -n '20,45p' settings.gradle
+          echo "=== 第31行上下文 ==="
+          sed -n '25,35p' settings.gradle
           echo ""
-          echo "5. 整个项目的目录结构:"
-          find . -maxdepth 4 -type d | sort
+          echo "=== 当前目录结构 ==="
+          ls -la
           echo ""
-          echo "6. .gitmodules 文件内容:"
-          cat .gitmodules || echo "没有 .gitmodules 文件"
-          echo ""
-          echo "7. 检查 android-components 目录:"
-          ls -la android-components/ 2>/dev/null || echo "android-components 目录不存在"
-          echo ""
-          if [ -d "android-components" ]; then
-            echo "8. android-components 的目录结构:"
-            find android-components -maxdepth 3 -type d | sort
-            echo ""
-            echo "9. android-components/.gitmodules 内容:"
-            cat android-components/.gitmodules 2>/dev/null || echo "android-components/.gitmodules 不存在"
-          fi
+          echo "=== 检查android-components是否存在 ==="
+          ls -la android-components/ || echo "android-components目录不存在"
 
-      # 3. 彻底重置和重新设置
-      - name: Complete Reset and Setup
+      # 3. 尝试修复子模块（如果android-components不存在）
+      - name: Fix Submodule
         run: |
-          echo "==================== 彻底重置 ===================="
-          
-          # 备份重要文件
-          cp settings.gradle settings.gradle.backup
-          
-          # 完全删除 android-components
-          rm -rf android-components
-          
-          echo "1. 从 Ice Raven 的 .gitmodules 获取正确的子模块URL..."
-          if [ -f ".gitmodules" ]; then
-            echo "找到 .gitmodules，内容:"
-            cat .gitmodules
-            
-            # 提取 android-components 的URL
-            ACOMP_URL=$(grep -A2 "path = android-components" .gitmodules | grep "url" | cut -d= -f2 | tr -d ' ')
-            echo "提取的URL: $ACOMP_URL"
-            
-            if [ -z "$ACOMP_URL" ]; then
-              ACOMP_URL="https://github.com/mozilla-mobile/android-components.git"
-            fi
-          else
-            ACOMP_URL="https://github.com/mozilla-mobile/android-components.git"
+          if [ ! -d "android-components" ]; then
+            echo "android-components不存在，尝试克隆..."
+            git clone --depth=1 https://github.com/mozilla-mobile/android-components.git
           fi
-          
-          echo "2. 克隆 android-components: $ACOMP_URL"
-          git clone --depth=1 --branch main "$ACOMP_URL" android-components
-          
-          echo "3. 进入 android-components 并检查其子模块..."
-          cd android-components
-          
-          # 检查是否有 .gitmodules
-          if [ -f ".gitmodules" ]; then
-            echo "android-components 的 .gitmodules 内容:"
-            cat .gitmodules
-            
-            # 初始化所有子模块
-            echo "初始化 android-components 的所有子模块..."
-            git submodule update --init --recursive --force --depth=1
-            
-            # 特别检查 publicsuffixlist
-            echo "检查 publicsuffixlist..."
-            if [ ! -d "plugins/publicsuffixlist" ]; then
-              echo "publicsuffixlist 不存在，尝试单独获取..."
-              # 从 .gitmodules 获取URL
-              PSL_URL=$(grep -A2 "path = plugins/publicsuffixlist" .gitmodules | grep "url" | cut -d= -f2 | tr -d ' ')
-              echo "publicsuffixlist URL: $PSL_URL"
-              
-              if [ -n "$PSL_URL" ]; then
-                mkdir -p plugins
-                cd plugins
-                git clone --depth=1 "$PSL_URL" publicsuffixlist
-                cd ..
-              fi
-            fi
-          else
-            echo "警告: android-components 没有 .gitmodules 文件"
-          fi
-          
-          cd ..
-          
-          echo "4. 验证最终结构..."
-          echo "android-components 目录:"
-          ls -la android-components/
-          echo ""
-          echo "android-components/plugins 目录:"
-          ls -la android-components/plugins/ 2>/dev/null || echo "plugins 目录不存在"
-          echo ""
-          if [ -d "android-components/plugins" ]; then
-            echo "plugins 目录内容:"
-            ls -la android-components/plugins/
-          fi
-
-      # 4. 如果上面失败，尝试替代方案
-      - name: Fallback Setup
-        if: failure()
-        run: |
-          echo "==================== 备用方案 ===================="
-          
-          echo "1. 检查是否真的有 publicsuffixlist 目录..."
           if [ ! -d "android-components/plugins/publicsuffixlist" ]; then
-            echo "publicsuffixlist 仍然不存在，尝试创建空目录..."
-            mkdir -p android-components/plugins/publicsuffixlist
-            
-            echo "2. 创建最小化的 build.gradle 文件..."
-            cat > android-components/plugins/publicsuffixlist/build.gradle << 'EOF'
-// Minimal build.gradle for publicsuffixlist
-plugins {
-    id('java-library')
-}
-
-repositories {
-    mavenCentral()
-}
-
-dependencies {
-    // 添加一些基本依赖
-}
-
-task build {
-    doLast {
-        println "Public suffix list placeholder build"
-    }
-}
-EOF
+            echo "publicsuffixlist不存在，尝试克隆..."
+            mkdir -p android-components/plugins
+            cd android-components/plugins
+            git clone --depth=1 https://github.com/mozilla-mobile/publicsuffixlist.git
+            cd ../..
           fi
-          
-          echo "3. 尝试修改 settings.gradle..."
-          cp settings.gradle.backup settings.gradle
-          
-          # 注释掉有问题的行
-          sed -i '31s/^/# /' settings.gradle
-          echo "已注释掉第31行"
-          
-          # 检查是否还有其他引用
-          echo "检查其他引用:"
-          grep -n "publicsuffixlist" settings.gradle || echo "没有其他引用"
+
+      # 4. 如果上述步骤失败，则修改settings.gradle
+      - name: Modify settings.gradle if needed
+        run: |
+          if [ ! -d "android-components/plugins/publicsuffixlist" ]; then
+            echo "publicsuffixlist仍然不存在，将修改settings.gradle"
+            # 备份
+            cp settings.gradle settings.gradle.bak
+            # 注释掉第31行
+            sed -i '31s/^/#/' settings.gradle
+            echo "已注释掉第31行"
+          else
+            echo "publicsuffixlist存在，无需修改settings.gradle"
+          fi
 
       # 5. 设置Java环境
       - name: Set up JDK
@@ -178,32 +70,27 @@ EOF
       - name: Decode Keystore File
         run: |
           echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > my-release-key.jks
-          echo "密钥库文件大小: $(wc -c < my-release-key.jks) bytes"
 
       # 7. 给Gradle包装脚本执行权限
       - name: Grant execute permission to gradlew
         run: chmod +x ./gradlew
 
-      # 8. 测试构建配置
-      - name: Test Build Configuration
+      # 8. 尝试构建（不签名，先测试）
+      - name: Test Build (unsigned)
         run: |
-          echo "==================== 测试构建配置 ===================="
-          ./gradlew --version
-          echo ""
-          echo "尝试列出任务:"
-          ./gradlew tasks 2>&1 | head -50 || true
+          echo "=== 测试构建（不签名）==="
+          ./gradlew assembleDebug --stacktrace || true
 
       # 9. 构建并签名Release版APK
       - name: Build Signed APK
         run: |
-          echo "==================== 开始构建 ===================="
+          echo "=== 构建签名APK ==="
           ./gradlew assembleForkRelease \
             -PKEYSTORE_FILE=my-release-key.jks \
             -PKEYSTORE_PASSWORD='${{ secrets.KEYSTORE_PASSWORD }}' \
             -PKEY_ALIAS='${{ secrets.KEY_ALIAS }}' \
             -PKEY_PASSWORD='${{ secrets.KEY_PASSWORD }}' \
-            --stacktrace \
-            --info
+            --stacktrace
 
       # 10. 上传生成的APK
       - name: Upload APK Artifact
