@@ -35,7 +35,7 @@ jobs:
       #    关键：通过 -P 参数将Secrets传递给Gradle脚本
       - name: Build Signed APK
         run: |
-          ./gradlew assembleRelease \
+          ./gradlew assembleForkRelease \
             -PKEYSTORE_FILE=my-release-key.jks \
             -PKEYSTORE_PASSWORD='${{ secrets.KEYSTORE_PASSWORD }}' \
             -PKEY_ALIAS='${{ secrets.KEY_ALIAS }}' \
@@ -43,7 +43,7 @@ jobs:
 
       # 6. 上传生成的APK作为工作流产物
       - name: Upload APK Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Signed-Release-APK
           path: app/build/outputs/apk/release/ # APK默认输出路径
