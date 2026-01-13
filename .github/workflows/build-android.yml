@@ -15,67 +15,134 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 2. 手动初始化子模块（更健壮版本）
-      - name: Manual Submodule Initialization
+      # 2. 深度诊断和初始化
+      - name: Deep Diagnostic and Setup
         run: |
-          echo "=== 手动初始化子模块 ==="
+          echo "=== 深度诊断开始 ==="
+          
+          # 1. 显示项目结构
           echo "当前目录: $(pwd)"
-          echo "目录内容:"
-          ls -la
+          echo "目录结构:"
+          find . -maxdepth 3 -type d | sort
           
-          # 检查 .gitmodules 文件
-          echo "检查 .gitmodules 文件..."
+          # 2. 检查 .gitmodules
+          echo "=== 检查 .gitmodules ==="
           if [ -f ".gitmodules" ]; then
+            echo "找到 .gitmodules 文件:"
             cat .gitmodules
-            echo "---"
+          else
+            echo "未找到 .gitmodules 文件"
           fi
           
-          # 删除现有目录
-          echo "删除现有 android-components 目录..."
-          rm -rf android-components
-          
-          # 手动克隆主子模块
-          echo "克隆 android-components 仓库..."
-          git clone --depth=1 --branch main https://github.com/mozilla-mobile/android-components.git
-          
-          # 检查是否克隆成功
-          if [ ! -d "android-components" ]; then
-            echo "错误: android-components 克隆失败!"
-            exit 1
+          # 3. 检查 settings.gradle
+          echo "=== 检查 settings.gradle ==="
+          if [ -f "settings.gradle" ]; then
+            echo "settings.gradle 内容:"
+            cat settings.gradle
+          else
+            echo "未找到 settings.gradle 文件"
           fi
           
-          # 进入并检查publicsuffixlist
-          cd android-components
-          echo "当前在 android-components 目录: $(pwd)"
-          echo "检查 plugins 目录..."
-          ls -la plugins/ || echo "plugins 目录不存在，创建它..."
-          mkdir -p plugins
+          # 4. 检查 android-components 目录
+          echo "=== 检查 android-components 目录 ==="
+          if [ -d "android-components" ]; then
+            echo "android-components 存在，内容:"
+            ls -la android-components/
+            
+            echo "检查 android-components 的 .gitmodules:"
+            if [ -f "android-components/.gitmodules" ]; then
+              cat android-components/.gitmodules
+            else
+              echo "android-components/.gitmodules 不存在"
+            fi
+          else
+            echo "android-components 目录不存在，将手动克隆"
+            
+            # 获取 android-components 的子模块URL
+            echo "从 .gitmodules 获取 android-components URL..."
+            if [ -f ".gitmodules" ]; then
+              ACOMP_URL=$(grep -A2 "path = android-components" .gitmodules | grep "url" | cut -d= -f2 | tr -d ' ')
+              echo "找到URL: $ACOMP_URL"
+              
+              if [ ! -z "$ACOMP_URL" ]; then
+                echo "克隆 android-components..."
+                git clone --depth=1 $ACOMP_URL android-components
+              else
+                echo "使用默认URL克隆 android-components..."
+                git clone --depth=1 https://github.com/mozilla-mobile/android-components.git
+              fi
+            else
+              echo "使用默认URL克隆 android-components..."
+              git clone --depth=1 https://github.com/mozilla-mobile/android-components.git
+            fi
+          fi
           
-          echo "检查 publicsuffixlist..."
-          if [ ! -d "plugins/publicsuffixlist" ]; then
-            echo "手动初始化 publicsuffixlist..."
-            cd plugins
-            git clone --depth=1 https://github.com/mozilla-mobile/publicsuffixlist.git
+          # 5. 特别处理 public suffix list
+          echo "=== 特别处理 public suffix list ==="
+          if [ -d "android-components" ]; then
+            cd android-components
+            
+            # 检查 plugins 目录
+            echo "检查 plugins 目录..."
+            if [ ! -d "plugins" ]; then
+              mkdir -p plugins
+            fi
+            
+            # 检查 publicsuffixlist
+            if [ ! -d "plugins/publicsuffixlist" ]; then
+              echo "publicsuffixlist 不存在，尝试克隆..."
+              
+              # 从 android-components 的 .gitmodules 获取URL
+              if [ -f ".gitmodules" ]; then
+                PSL_URL=$(grep -A2 "path = plugins/publicsuffixlist" .gitmodules | grep "url" | cut -d= -f2 | tr -d ' ')
+                echo "从 .gitmodules 找到URL: $PSL_URL"
+                
+                if [ ! -z "$PSL_URL" ]; then
+                  cd plugins
+                  git clone --depth=1 $PSL_URL publicsuffixlist
+                  cd ..
+                else
+                  echo "尝试从常见位置克隆..."
+                  cd plugins
+                  git clone --depth=1 https://github.com/mozilla-mobile/publicsuffixlist.git publicsuffixlist
+                  cd ..
+                fi
+              else
+                echo "尝试从常见位置克隆..."
+                cd plugins
+                git clone --depth=1 https://github.com/mozilla-mobile/publicsuffixlist.git publicsuffixlist
+                cd ..
+              fi
+            else
+              echo "publicsuffixlist 已存在"
+            fi
+            
+            # 验证
+            echo "验证目录结构..."
+            if [ -d "plugins/publicsuffixlist" ]; then
+              echo "✓ publicsuffixlist 存在"
+              echo "内容:"
+              ls -la plugins/publicsuffixlist/
+            else
+              echo "✗ publicsuffixlist 仍然不存在"
+              
+              # 尝试替代路径
+              echo "尝试寻找替代位置..."
+              find . -name "*publicsuffixlist*" -type d
+            fi
+            
             cd ..
-          else
-            echo "publicsuffixlist 已存在"
           fi
           
-          cd ..
-          
-          # 最终验证
+          # 6. 最终验证
           echo "=== 最终验证 ==="
-          echo "android-components 目录结构:"
-          ls -la android-components/
-          echo "---"
-          echo "android-components/plugins 目录结构:"
-          ls -la android-components/plugins/
-          echo "---"
+          echo "检查 android-components/plugins/publicsuffixlist 是否存在:"
           if [ -d "android-components/plugins/publicsuffixlist" ]; then
-            echo "✓ publicsuffixlist 存在!"
-            ls -la android-components/plugins/publicsuffixlist/
+            echo "✓ 成功: android-components/plugins/publicsuffixlist 存在"
           else
-            echo "✗ 错误: publicsuffixlist 仍然不存在!"
+            echo "✗ 失败: android-components/plugins/publicsuffixlist 不存在"
+            echo "尝试创建空目录以继续..."
+            mkdir -p android-components/plugins/publicsuffixlist
           fi
 
       # 3. 设置Java环境
@@ -89,21 +156,24 @@ jobs:
       - name: Decode Keystore File
         run: |
           echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > my-release-key.jks
-          echo "密钥库文件大小: $(wc -c < my-release-key.jks) bytes"
 
       # 5. 给Gradle包装脚本执行权限
       - name: Grant execute permission to gradlew
         run: chmod +x ./gradlew
 
-      # 6. 先尝试调试构建（查看任务）
-      - name: Debug Gradle Tasks
+      # 6. 先检查Gradle插件
+      - name: Check Gradle Plugins
         run: |
-          echo "=== 可用的Gradle任务 ==="
-          ./gradlew tasks --all || true
+          echo "=== 检查Gradle插件 ==="
+          ./gradlew --version
+          echo "---"
+          echo "尝试列出所有插件..."
+          ./gradlew tasks --all | grep -i plugin || true
 
       # 7. 构建并签名Release版APK
       - name: Build Signed APK
         run: |
+          echo "=== 开始构建 ==="
           ./gradlew assembleForkRelease \
             -PKEYSTORE_FILE=my-release-key.jks \
             -PKEYSTORE_PASSWORD='${{ secrets.KEYSTORE_PASSWORD }}' \
