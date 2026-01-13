@@ -9,69 +9,85 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # 1. 拉取代码
-      - name: Checkout code
+      # 1. 完全重新拉取代码（不使用子模块）
+      - name: Checkout code (without submodules)
         uses: actions/checkout@v4
         with:
-          submodules: true
           fetch-depth: 0
 
-      # 2. 深度初始化子模块
-      - name: Deep Setup Submodules
+      # 2. 完全重新初始化所有子模块
+      - name: Nuke and Reinitialize Submodules
         run: |
-          echo "=== 开始深度初始化子模块 ==="
+          echo "=== 彻底重新初始化子模块 ==="
           
-          # 显示当前子模块配置
-          echo "子模块配置:"
-          cat .gitmodules || echo "没有.gitmodules文件"
+          # 1. 先清理所有现有的子模块
+          echo "清理现有子模块..."
+          git submodule deinit -f . || true
+          git clean -fdx || true
           
-          # 先同步所有子模块
-          echo "同步子模块..."
-          git submodule sync --recursive
+          # 2. 重新初始化
+          echo "重新初始化子模块..."
+          git submodule init
           
-          # 初始化所有子模块
-          echo "初始化子模块..."
-          git submodule update --init --recursive --force --depth=1
+          # 3. 递归更新（使用更大的深度）
+          echo "递归更新子模块..."
+          git submodule update --init --recursive --force --depth=3
           
-          # 检查android-components是否存在
-          echo "检查android-components目录..."
+          # 4. 特别处理android-components
+          echo "特别处理android-components..."
           if [ -d "android-components" ]; then
-            echo "android-components目录存在"
-            echo "进入android-components目录..."
             cd android-components
+            echo "在android-components中初始化子模块..."
+            git submodule init
+            git submodule update --init --recursive --force --depth=3
             
-            echo "android-components的git状态:"
-            git status
-            git log --oneline -5
-            
-            echo "android-components的子模块配置:"
-            if [ -f ".gitmodules" ]; then
-              cat .gitmodules
+            # 特别检查publicsuffixlist
+            echo "检查publicsuffixlist..."
+            if [ -d "plugins/publicsuffixlist" ]; then
+              echo "publicsuffixlist目录已存在"
+              cd plugins/publicsuffixlist
+              git status
+              cd ../..
             else
-              echo "没有.gitmodules文件"
+              echo "尝试单独初始化publicsuffixlist..."
+              git submodule update --init --force --depth=3 plugins/publicsuffixlist || true
             fi
-            
-            echo "检查plugins目录..."
-            ls -la plugins/ || echo "plugins目录不存在"
-            
-            # 特别处理publicsuffixlist
-            if [ ! -d "plugins/publicsuffixlist" ]; then
-              echo "publicsuffixlist目录不存在，尝试单独初始化..."
-              git submodule update --init --recursive --force plugins/publicsuffixlist
-            fi
-            
             cd ..
-          else
-            echo "错误: android-components目录不存在!"
-            # 尝试重新初始化
-            git submodule update --init --recursive --force
           fi
           
-          # 最终检查
-          echo "=== 最终目录结构检查 ==="
-          find . -name "*.gradle" -o -name "*.gradle.kts" | head -20
+          # 5. 验证
+          echo "=== 验证目录结构 ==="
+          echo "当前目录: $(pwd)"
+          ls -la
           echo "---"
-          ls -la android-components/plugins/ || echo "无法列出plugins目录"
+          if [ -d "android-components" ]; then
+            echo "android-components目录内容:"
+            ls -la android-components/
+            echo "---"
+            if [ -d "android-components/plugins" ]; then
+              echo "android-components/plugins目录内容:"
+              ls -la android-components/plugins/
+              echo "---"
+              if [ -d "android-components/plugins/publicsuffixlist" ]; then
+                echo "publicsuffixlist目录存在!"
+                ls -la android-components/plugins/publicsuffixlist/
+              else
+                echo "警告: publicsuffixlist目录仍然不存在"
+                # 尝试从.gitmodules中获取URL并手动克隆
+                echo "尝试从.gitmodules提取URL..."
+                if [ -f "android-components/.gitmodules" ]; then
+                  URL=$(grep -A2 "publicsuffixlist" android-components/.gitmodules | grep "url" | cut -d= -f2 | tr -d ' ')
+                  echo "找到URL: $URL"
+                  if [ ! -z "$URL" ]; then
+                    echo "手动克隆publicsuffixlist..."
+                    cd android-components/plugins
+                    git clone --depth=1 $URL publicsuffixlist
+                    cd ../..
+                  fi
+                fi
+              fi
+            fi
+          fi
 
       # 3. 设置Java环境
       - name: Set up JDK
@@ -80,29 +96,22 @@ jobs:
           java-version: '11'
           distribution: 'temurin'
 
-      # 4. 解码Base64编码的密钥库文件
+      # 4. 解码密钥库
       - name: Decode Keystore File
         run: |
           echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > my-release-key.jks
-          echo "密钥库文件大小: $(wc -c < my-release-key.jks) bytes"
 
-      # 5. 先尝试执行gradle任务但不构建
-      - name: Check Gradle Configuration
+      # 5. 测试性构建（先不签名）
+      - name: Test Build (unsigned)
         run: |
           chmod +x ./gradlew
-          echo "=== 测试gradle配置 ==="
-          ./gradlew tasks --all || true
-          echo "=== 检查settings.gradle ==="
-          head -50 settings.gradle || true
+          echo "=== 测试构建（不签名）==="
+          ./gradlew assembleForkDebug --stacktrace || ./gradlew assembleDebug --stacktrace
 
-      # 6. 给Gradle包装脚本执行权限
-      - name: Grant execute permission to gradlew
-        run: chmod +x ./gradlew
-
-      # 7. 构建并签名Release版APK
+      # 6. 构建并签名Release版APK
       - name: Build Signed APK
         run: |
-          echo "=== 开始构建 ==="
+          echo "=== 构建签名APK ==="
           ./gradlew assembleForkRelease \
             -PKEYSTORE_FILE=my-release-key.jks \
             -PKEYSTORE_PASSWORD='${{ secrets.KEYSTORE_PASSWORD }}' \
@@ -110,7 +119,7 @@ jobs:
             -PKEY_PASSWORD='${{ secrets.KEY_PASSWORD }}' \
             --stacktrace
 
-      # 8. 上传生成的APK
+      # 7. 上传生成的APK
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
