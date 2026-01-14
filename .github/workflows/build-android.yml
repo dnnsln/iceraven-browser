@@ -1,179 +1,38 @@
-name: Build Ice Raven Signed APK
+name: Build Signed Release APK
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # 仅手动触发
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # 1. 拉取代码并初始化子模块
-      - name: Checkout with proper submodules
+      # 1. 拉取代码和子模块（现在你的仓库里子模块引用已正确）
+      - name: Checkout code with submodules
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           submodules: 'recursive'
+          fetch-depth: 0
 
-      # 2. 完全重新初始化所有子模块
-      - name: Deep Reinitialize Submodules
-        run: |
-          echo "=== 深度重新初始化子模块 ==="
-          
-          # 清理并重新初始化
-          git submodule deinit -f . || true
-          git clean -fdx || true
-          git submodule init
-          git submodule update --init --recursive --force --depth=3
-          
-          echo "子模块状态:"
-          git submodule status --recursive
-
-      # 3. 修复 android-components 配置
-      - name: Fix Android Components Configuration
-        run: |
-          echo "=== 修复 Android Components 配置 ==="
-          
-          # 确保 android-components 目录存在
-          if [ ! -d "android-components" ]; then
-            echo "android-components 不存在，克隆..."
-            git clone --depth=1 --branch main https://github.com/mozilla-mobile/android-components.git
-          fi
-          
-          # 进入 android-components 目录
-          cd android-components
-          
-          # 确保在正确的分支
-          git checkout main || git checkout master || true
-          
-          # 更新子模块
-          git submodule update --init --recursive --force --depth=3 || true
-          
-          # 检查 .buildconfig.yml
-          if [ ! -f ".buildconfig.yml" ]; then
-            echo "创建 .buildconfig.yml 文件..."
-            
-            # 从 android-components 仓库获取真实的 .buildconfig.yml
-            # 首先尝试从远程获取
-            curl -s https://raw.githubusercontent.com/mozilla-mobile/android-components/main/.buildconfig.yml -o .buildconfig.yml || {
-              echo "无法从远程获取，创建最小化版本..."
-              cat > .buildconfig.yml << 'EOF'
-build:
-  android_gradle_plugin: "8.0.2"
-  build_tools: "33.0.2"
-  compile_sdk: 33
-  target_sdk: 33
-  min_sdk: 21
-
-version:
-  name: "119.0.0"
-  code: 1190000
-
-android:
-  applicationId: "org.mozilla.fenix"
-  versionName: "119.0.0"
-
-components:
-  version: "119.0.0"
-
-quality:
-  detekt:
-    version: "1.23.0"
-  ktlint:
-    version: "0.50.0"
-EOF
-            }
-          fi
-          
-          echo ".buildconfig.yml 内容预览:"
-          head -30 .buildconfig.yml
-          
-          cd ..
-
-      # 4. 修复 shared-settings.gradle 文件
-      - name: Fix shared-settings.gradle
-        run: |
-          echo "=== 修复 shared-settings.gradle ==="
-          
-          # 备份原始文件
-          cp shared-settings.gradle shared-settings.gradle.backup
-          
-          echo "查看第115行及附近内容:"
-          sed -n '110,120p' shared-settings.gradle
-          
-          # 如果第115行是读取 .buildconfig.yml，我们可以尝试修复
-          # 首先检查 android-components/.buildconfig.yml 是否存在
-          if [ -f "android-components/.buildconfig.yml" ]; then
-            echo "android-components/.buildconfig.yml 存在，尝试修复读取逻辑..."
-            
-            # 创建一个补丁文件来修复读取问题
-            # 我们将在文件开头添加一个变量来避免 FileNotFoundException
-            cat > shared-settings.gradle.patch << 'EOF'
---- a/shared-settings.gradle
-+++ b/shared-settings.gradle
-@@ -112,7 +112,12 @@
-             continue
-         }
- 
--        def buildconfig = new File("$topsrcdir/$acPath/.buildconfig.yml")
-+        def buildconfigFile = new File("$topsrcdir/$acPath/.buildconfig.yml")
-+        def buildconfig = buildconfigFile.exists() ? buildconfigFile : null
-+        if (buildconfig == null) {
-+            println "WARNING: .buildconfig.yml not found at ${buildconfigFile.absolutePath}"
-+            continue
-+        }
-         def config = new org.yaml.snakeyaml.Yaml().load(buildconfig.newInputStream())
-EOF
-            
-            # 应用补丁
-            if command -v patch &> /dev/null; then
-              patch -p1 < shared-settings.gradle.patch || echo "补丁应用失败，但继续..."
-            else
-              echo "patch 命令不可用，跳过补丁应用"
-            fi
-          else
-            echo "警告: android-components/.buildconfig.yml 仍然不存在"
-            echo "创建空的 .buildconfig.yml 文件..."
-            mkdir -p android-components
-            cat > android-components/.buildconfig.yml << 'EOF'
-build:
-  min_sdk: 21
-  target_sdk: 33
-  compile_sdk: 33
-EOF
-          fi
-
-      # 5. 设置Java环境
+      # 2. 设置Java环境
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           java-version: '11'
           distribution: 'temurin'
 
-      # 6. 解码Base64编码的密钥库文件
+      # 3. 解码签名密钥库
       - name: Decode Keystore File
         run: |
           echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > my-release-key.jks
 
-      # 7. 给Gradle包装脚本执行权限
+      # 4. 赋予gradlew执行权限
       - name: Grant execute permission to gradlew
         run: chmod +x ./gradlew
 
-      # 8. 先测试构建配置
-      - name: Test Build Configuration
-        run: |
-          echo "=== 测试构建配置 ==="
-          ./gradlew tasks --all 2>&1 | head -100 || true
-
-      # 9. 尝试构建debug版本
-      - name: Try Debug Build
-        run: |
-          echo "=== 尝试构建debug版本 ==="
-          ./gradlew assembleDebug --stacktrace
-
-      # 10. 构建并签名Release版APK
+      # 5. 构建并签名的Release版APK
       - name: Build Signed APK
         run: |
-          echo "=== 构建签名APK ==="
           ./gradlew assembleForkRelease \
             -PKEYSTORE_FILE=my-release-key.jks \
             -PKEYSTORE_PASSWORD='${{ secrets.KEYSTORE_PASSWORD }}' \
@@ -181,9 +40,9 @@ EOF
             -PKEY_PASSWORD='${{ secrets.KEY_PASSWORD }}' \
             --stacktrace
 
-      # 11. 上传生成的APK
+      # 6. 上传生成的APK
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: IceRaven-Signed-APK
+          name: Signed-Fork-Release-APK
           path: app/build/outputs/apk/fork/release/
