@@ -1,3 +1,5 @@
+// 临时定义 ApplicationServicesConfig
+ ext.ApplicationServicesConfig = [groupId: "org.mozilla.appservices", version: "146.0.2"]
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
 
