@@ -1,7 +1,12 @@
-// 临时定义 ApplicationServicesConfig
- ext.ApplicationServicesConfig = [groupId: "org.mozilla.appservices", version: "146.0.2"]
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
+// 定义 ApplicationServicesConfig 在项目级别
+ext {
+    ApplicationServicesConfig = [
+        groupId: "org.mozilla.appservices",
+        version: "146.0.2"
+    ]
+}
 
 import io.gitlab.arturbosch.detekt.Detekt
 import io.gitlab.arturbosch.detekt.DetektCreateBaselineTask
@@ -33,6 +38,33 @@ buildscript {
 }
 
 plugins {
+    id 'ApkSizePlugin'
+    id "mozac.ConfigPlugin"
+    alias(libs.plugins.detekt)
+    alias(libs.plugins.kotlin.android) apply false
+    alias(libs.plugins.kotlin.compose) apply false
+    alias(libs.plugins.ksp)
+}
+
+allprojects {
+    // This logic is duplicated in the buildscript block: I don't know how to fix that.
+    repositories {
+        gradle.mozconfig.substs.GRADLE_MAVEN_REPOSITORIES.each { repository ->
+            maven {
+                url = repository
+                if (gradle.mozconfig.substs.ALLOW_INSECURE_GRADLE_REPOSITORIES) {
+                    allowInsecureProtocol = true
+                }
+            }
+        }
+    }
+}
+
+tasks.register('clean', Delete) {
+    delete rootProject.layout.buildDirectory
+}
+
+// 其他现有内容...
     id 'ApkSizePlugin'
     id "mozac.ConfigPlugin"
     alias(libs.plugins.detekt)
